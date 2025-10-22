@@ -1,92 +1,26 @@
-name: Manual Deploy to Production
-
+name: Deploy to Test Repo
 on:
-  workflow_dispatch:
-    inputs:
-      deploy_message:
-        description: 'Deployment message/reason'
-        required: true
-        default: 'QA approved - deploying to production'
-        type: string
-
-permissions:
-  contents: read
-
+  push:
+    branches:
+      - main
 jobs:
-  deploy-to-prod:
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout test-repo code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+        persist-credentials: false
 
-      - name: Display deployment info
-        run: |
-          echo "=========================================="
-          echo "Manual Deployment to Production"
-          echo "=========================================="
-          echo "Message: ${{ inputs.deploy_message }}"
-          echo "Triggered by: ${{ github.actor }}"
-          echo "Commit SHA: ${{ github.sha }}"
-          echo "Branch: ${{ github.ref_name }}"
-          echo "Deploying from: test-repo/main"
-          echo "Deploying to: prod-repo/main"
-          echo "=========================================="
+    - name: Push to test-repo using PAT
+      env:
+        PAT_TOKEN: ${{ secrets.TEST_REPO_PAT }}
+      run: |
+        # Configure git
+        git config user.name "GitHub Actions"
+        git config user.email "github-actions@github.com"
 
-      - name: Clone prod-repo
-        env:
-          PAT_TOKEN: ${{ secrets.PROD_REPO_PAT }}
-        run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Verify PAT token exists
-          if [ -z "$PAT_TOKEN" ]; then
-            echo "Error: PROD_REPO_PAT secret is not set!"
-            exit 1
-          fi
-
-          # Clone prod-repo
-          git clone https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository_owner }}/prod-repo.git prod-repo-temp
-
-          if [ $? -ne 0 ]; then
-            echo "Error: Failed to clone prod-repo. Check PAT permissions."
-            exit 1
-          fi
-
-      - name: Copy files from test-repo to prod-repo
-        run: |
-          # Copy all files except .git, .github, and prod-repo-temp
-          rsync -av --exclude='prod-repo-temp' --exclude='.git' --exclude='.github' --exclude='node_modules' . prod-repo-temp/
-
-      - name: Commit and push to prod-repo
-        env:
-          PAT_TOKEN: ${{ secrets.PROD_REPO_PAT }}
-        run: |
-          cd prod-repo-temp
-
-          # Configure git to use PAT for push
-          git remote set-url origin https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository_owner }}/prod-repo.git
-
-          git add .
-
-          # Check if there are changes to commit
-          if git diff --staged --quiet; then
-            echo "No changes to deploy"
-          else
-            git commit -m "Deploy from test-repo: ${{ inputs.deploy_message }} (by ${{ github.actor }})"
-            git push origin main
-
-            if [ $? -ne 0 ]; then
-              echo "Error: Failed to push to prod-repo. Check PAT permissions."
-              exit 1
-            fi
-          fi
-
-      - name: Deployment summary
-        run: |
-          echo "✅ Successfully deployed to prod-repo!"
-          echo "Deployment message: ${{ inputs.deploy_message }}"
-          echo "Triggered by: ${{ github.actor }}"
+        # Push to test-repo using PAT in URL
+        git remote add test-repo https://oauth2:${PAT_TOKEN}@github.com/Ali-ISAA/prod-repo.git
+        git push test-repo main --force
