@@ -1,30 +1,23 @@
-name: Manual Deployment
+name: Manual Deploy to Production
 
 on:
   workflow_dispatch:
     inputs:
-      environment:
-        description: 'Deployment environment'
-        required: true
-        default: 'staging'
-        type: choice
-        options:
-          - staging
-          - production
       deploy_message:
         description: 'Deployment message/reason'
-        required: false
-        default: 'Manual deployment triggered'
+        required: true
+        default: 'QA approved - deploying to production'
         type: string
 
 jobs:
-  deploy:
+  deploy-to-prod:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
 
     steps:
-      - name: Checkout code
+      - name: Checkout test-repo code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
@@ -37,44 +30,42 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Build Docker image
-        run: docker build -t test-app:${{ github.sha }} .
-
       - name: Display deployment info
         run: |
           echo "=========================================="
-          echo "Manual Deployment Information"
+          echo "Manual Deployment to Production"
           echo "=========================================="
-          echo "Environment: ${{ inputs.environment }}"
           echo "Message: ${{ inputs.deploy_message }}"
           echo "Triggered by: ${{ github.actor }}"
           echo "Commit SHA: ${{ github.sha }}"
           echo "Branch: ${{ github.ref_name }}"
+          echo "Deploying to: prod-repo"
           echo "=========================================="
 
-      - name: Deploy to Vercel
-        if: inputs.environment == 'production'
+      - name: Clone prod-repo
         run: |
-          npm install --global vercel@latest
-          vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
-          vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-          vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git clone https://${{ secrets.PROD_REPO_PAT }}@github.com/${{ github.repository_owner }}/prod-repo.git prod-repo-temp
 
-      - name: Deploy to Vercel (Staging)
-        if: inputs.environment == 'staging'
+      - name: Copy files to prod-repo
         run: |
-          npm install --global vercel@latest
-          vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
-          vercel build --token=${{ secrets.VERCEL_TOKEN }}
-          vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          # Remove .git directory to avoid copying git history
+          rm -rf .git
+          # Copy all files except the prod-repo-temp directory itself
+          rsync -av --exclude='prod-repo-temp' --exclude='.github' . prod-repo-temp/
+          # Copy only necessary workflow files if needed
+          # mkdir -p prod-repo-temp/.github/workflows
+
+      - name: Commit and push to prod-repo
+        run: |
+          cd prod-repo-temp
+          git add .
+          git diff --staged --quiet || git commit -m "Deploy from test-repo: ${{ inputs.deploy_message }} (by ${{ github.actor }})"
+          git push origin main
 
       - name: Deployment summary
         run: |
-          echo "✅ Deployment to ${{ inputs.environment }} completed successfully!"
+          echo "✅ Successfully deployed to prod-repo!"
           echo "Deployment message: ${{ inputs.deploy_message }}"
+          echo "Triggered by: ${{ github.actor }}"
