@@ -15,7 +15,7 @@ jobs:
 
     - name: Push to test-repo using PAT
       env:
-        PAT_TOKEN: ${{ secrets.TEST_REPO_PAT }}
+        PAT_TOKEN: ${{ secrets.PROD_REPO_PAT }}
       run: |
         # Configure git
         git config user.name "GitHub Actions"
