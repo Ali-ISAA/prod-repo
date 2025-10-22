@@ -1,8 +1,14 @@
-name: Deploy to Test Repo
+name: Manual Deploy to Production
+
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+    inputs:
+      deploy_message:
+        description: 'Deployment message/reason'
+        required: true
+        default: 'QA approved - deploying to production'
+        type: string
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -13,7 +19,20 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
-    - name: Push to test-repo using PAT
+    - name: Display deployment info
+      run: |
+        echo "=========================================="
+        echo "Manual Deployment to Production"
+        echo "=========================================="
+        echo "Message: ${{ inputs.deploy_message }}"
+        echo "Triggered by: ${{ github.actor }}"
+        echo "Commit SHA: ${{ github.sha }}"
+        echo "Branch: ${{ github.ref_name }}"
+        echo "Deploying from: test-repo/main"
+        echo "Deploying to: prod-repo/main"
+        echo "=========================================="
+
+    - name: Push to prod-repo using PAT
       env:
         PAT_TOKEN: ${{ secrets.PROD_REPO_PAT }}
       run: |
@@ -21,6 +40,12 @@ jobs:
         git config user.name "GitHub Actions"
         git config user.email "github-actions@github.com"
 
-        # Push to test-repo using PAT in URL
-        git remote add test-repo https://oauth2:${PAT_TOKEN}@github.com/Ali-ISAA/prod-repo.git
-        git push test-repo main --force
+        # Push to prod-repo using PAT in URL
+        git remote add prod-repo https://oauth2:${PAT_TOKEN}@github.com/Ali-ISAA/prod-repo.git
+        git push prod-repo main --force
+
+    - name: Deployment summary
+      run: |
+        echo "✅ Successfully deployed to prod-repo!"
+        echo "Deployment message: ${{ inputs.deploy_message }}"
+        echo "Triggered by: ${{ github.actor }}"
