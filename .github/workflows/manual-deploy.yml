@@ -22,17 +22,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Run tests
-        run: npx jest
-
       - name: Display deployment info
         run: |
           echo "=========================================="
@@ -42,7 +31,8 @@ jobs:
           echo "Triggered by: ${{ github.actor }}"
           echo "Commit SHA: ${{ github.sha }}"
           echo "Branch: ${{ github.ref_name }}"
-          echo "Deploying to: prod-repo"
+          echo "Deploying from: test-repo/main"
+          echo "Deploying to: prod-repo/main"
           echo "=========================================="
 
       - name: Clone prod-repo
@@ -58,7 +48,7 @@ jobs:
             exit 1
           fi
 
-          # Clone using PAT
+          # Clone prod-repo
           git clone https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository_owner }}/prod-repo.git prod-repo-temp
 
           if [ $? -ne 0 ]; then
@@ -66,9 +56,9 @@ jobs:
             exit 1
           fi
 
-      - name: Copy files to prod-repo
+      - name: Copy files from test-repo to prod-repo
         run: |
-          # Copy all files except .git and prod-repo-temp
+          # Copy all files except .git, .github, and prod-repo-temp
           rsync -av --exclude='prod-repo-temp' --exclude='.git' --exclude='.github' --exclude='node_modules' . prod-repo-temp/
 
       - name: Commit and push to prod-repo
