@@ -9,6 +9,9 @@ on:
         default: 'QA approved - deploying to production'
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   deploy-to-prod:
     runs-on: ubuntu-latest
@@ -43,26 +46,54 @@ jobs:
           echo "=========================================="
 
       - name: Clone prod-repo
+        env:
+          PAT_TOKEN: ${{ secrets.PROD_REPO_PAT }}
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git clone https://${{ secrets.PROD_REPO_PAT }}@github.com/${{ github.repository_owner }}/prod-repo.git prod-repo-temp
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Verify PAT token exists
+          if [ -z "$PAT_TOKEN" ]; then
+            echo "Error: PROD_REPO_PAT secret is not set!"
+            exit 1
+          fi
+
+          # Clone using PAT
+          git clone https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository_owner }}/prod-repo.git prod-repo-temp
+
+          if [ $? -ne 0 ]; then
+            echo "Error: Failed to clone prod-repo. Check PAT permissions."
+            exit 1
+          fi
 
       - name: Copy files to prod-repo
         run: |
-          # Remove .git directory to avoid copying git history
-          rm -rf .git
-          # Copy all files except the prod-repo-temp directory itself
-          rsync -av --exclude='prod-repo-temp' --exclude='.github' . prod-repo-temp/
-          # Copy only necessary workflow files if needed
-          # mkdir -p prod-repo-temp/.github/workflows
+          # Copy all files except .git and prod-repo-temp
+          rsync -av --exclude='prod-repo-temp' --exclude='.git' --exclude='.github' --exclude='node_modules' . prod-repo-temp/
 
       - name: Commit and push to prod-repo
+        env:
+          PAT_TOKEN: ${{ secrets.PROD_REPO_PAT }}
         run: |
           cd prod-repo-temp
+
+          # Configure git to use PAT for push
+          git remote set-url origin https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository_owner }}/prod-repo.git
+
           git add .
-          git diff --staged --quiet || git commit -m "Deploy from test-repo: ${{ inputs.deploy_message }} (by ${{ github.actor }})"
-          git push origin main
+
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to deploy"
+          else
+            git commit -m "Deploy from test-repo: ${{ inputs.deploy_message }} (by ${{ github.actor }})"
+            git push origin main
+
+            if [ $? -ne 0 ]; then
+              echo "Error: Failed to push to prod-repo. Check PAT permissions."
+              exit 1
+            fi
+          fi
 
       - name: Deployment summary
         run: |
