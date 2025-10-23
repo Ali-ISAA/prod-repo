@@ -47,12 +47,21 @@ h1 {
 }
 
 .pipeline-status {
-  color: #6c757d;
   margin-top: 1rem;
+  font-weight: 500;
 }
 
-.dark-theme .pipeline-status {
+body.light-theme .pipeline-status {
+  color: #495057;
+}
+
+body.dark-theme .pipeline-status {
   color: #adb5bd;
+}
+
+/* When custom colors are applied, pipeline status inherits body color */
+body[style*="color"] .pipeline-status {
+  color: inherit !important;
 }
 
 @keyframes fadeIn {
