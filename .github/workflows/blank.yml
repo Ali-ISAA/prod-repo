@@ -1,5 +1,5 @@
 # This is a basic workflow to help you get started with Actions
-name: CI
+name: CI # prod
 
 # Controls when the workflow will run
 on:
@@ -29,7 +29,7 @@ jobs:
         run: |
           echo "Building new Docker image..."
           echo "Tests will run during the build process..."
-          docker build -t test-repo:latest .
+          docker build -t prod-repo:latest .
           echo "✅ Image built successfully!"
           echo "✅ Tests passed!"
       
@@ -37,8 +37,8 @@ jobs:
       - name: Stop existing container
         run: |
           echo "Stopping existing container..."
-          docker stop test-repo-app || true
-          docker rm test-repo-app || true
+          docker stop prod-repo-app || true
+          docker rm prod-repo-app || true
         continue-on-error: true
       
       # Run new container
@@ -46,25 +46,25 @@ jobs:
         run: |
           echo "Starting new container..."
           docker run -d \
-            --name test-repo-app \
-            -p 3001:3001 \
+            --name prod-repo-app \
+            -p 3001:3000 \
             --restart unless-stopped \
             --health-cmd "node -e \"require('http').get('http://localhost:3000/health', (r) => {r.statusCode === 200 ? process.exit(0) : process.exit(1)})\"" \
             --health-interval 30s \
             --health-timeout 3s \
             --health-retries 3 \
             --health-start-period 5s \
-            test-repo:latest
+            prod-repo:latest
           echo "Container started successfully!"
       
       # Wait for container to be healthy
       - name: Wait for container health check
         run: |
           echo "Waiting for container to be healthy..."
-          timeout 60 sh -c 'until docker inspect --format="{{.State.Health.Status}}" test-repo-app | grep -q "healthy"; do sleep 2; done' || {
+          timeout 60 sh -c 'until docker inspect --format="{{.State.Health.Status}}" prod-repo-app | grep -q "healthy"; do sleep 2; done' || {
             echo "⚠️ Container health check timeout or failed"
             echo "Container logs:"
-            docker logs test-repo-app
+            docker logs prod-repo-app
             exit 1
           }
           echo "✅ Container is healthy!"
@@ -83,13 +83,13 @@ jobs:
           echo "Deployed at: $(date)"
           echo "========================================="
           echo "Container Status:"
-          docker ps --filter name=test-repo-app --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}\t{{.State}}"
+          docker ps --filter name=prod-repo-app --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}\t{{.State}}"
           echo "========================================="
           echo "Container Health:"
-          docker inspect --format='{{.State.Health.Status}}' test-repo-app
+          docker inspect --format='{{.State.Health.Status}}' prod-repo-app
           echo "========================================="
           echo "Recent Container Logs:"
-          docker logs --tail 20 test-repo-app
+          docker logs --tail 20 prod-repo-app
           echo "========================================="
       
       # Optional: Clean up old/unused Docker images
@@ -98,7 +98,7 @@ jobs:
           echo "Cleaning up unused Docker images..."
           # Remove dangling images
           docker image prune -f
-          # Remove old test-repo images (keep latest)
-          docker images test-repo --format "{{.ID}} {{.Tag}}" | grep -v latest | awk '{print $1}' | xargs -r docker rmi || true
+          # Remove old prod-repo images (keep latest)
+          docker images prod-repo --format "{{.ID}} {{.Tag}}" | grep -v latest | awk '{print $1}' | xargs -r docker rmi || true
           echo "Cleanup completed!"
         continue-on-error: true
