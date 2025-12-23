@@ -1,0 +1,104 @@
+# This is a basic workflow to help you get started with Actions
+name: CI
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "main" branch
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build-and-deploy:
+    # The type of runner that the job will run on
+    runs-on: self-hosted
+    
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      # Build new Docker image (tests run automatically during build)
+      - name: Build Docker image
+        run: |
+          echo "Building new Docker image..."
+          echo "Tests will run during the build process..."
+          docker build -t test-repo:latest .
+          echo "✅ Image built successfully!"
+          echo "✅ Tests passed!"
+      
+      # Stop and remove old container if exists
+      - name: Stop existing container
+        run: |
+          echo "Stopping existing container..."
+          docker stop test-repo-app || true
+          docker rm test-repo-app || true
+        continue-on-error: true
+      
+      # Run new container
+      - name: Run Docker container
+        run: |
+          echo "Starting new container..."
+          docker run -d \
+            --name test-repo-app \
+            -p 3001:3001 \
+            --restart unless-stopped \
+            --health-cmd "node -e \"require('http').get('http://localhost:3000/health', (r) => {r.statusCode === 200 ? process.exit(0) : process.exit(1)})\"" \
+            --health-interval 30s \
+            --health-timeout 3s \
+            --health-retries 3 \
+            --health-start-period 5s \
+            test-repo:latest
+          echo "Container started successfully!"
+      
+      # Wait for container to be healthy
+      - name: Wait for container health check
+        run: |
+          echo "Waiting for container to be healthy..."
+          timeout 60 sh -c 'until docker inspect --format="{{.State.Health.Status}}" test-repo-app | grep -q "healthy"; do sleep 2; done' || {
+            echo "⚠️ Container health check timeout or failed"
+            echo "Container logs:"
+            docker logs test-repo-app
+            exit 1
+          }
+          echo "✅ Container is healthy!"
+      
+      # Verify deployment
+      - name: Verify deployment
+        run: |
+          echo "Verifying deployment..."
+          echo "========================================="
+          echo "Deployment Summary"
+          echo "========================================="
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Commit Message: ${{ github.event.head_commit.message }}"
+          echo "Deployed at: $(date)"
+          echo "========================================="
+          echo "Container Status:"
+          docker ps --filter name=test-repo-app --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}\t{{.State}}"
+          echo "========================================="
+          echo "Container Health:"
+          docker inspect --format='{{.State.Health.Status}}' test-repo-app
+          echo "========================================="
+          echo "Recent Container Logs:"
+          docker logs --tail 20 test-repo-app
+          echo "========================================="
+      
+      # Optional: Clean up old/unused Docker images
+      - name: Clean up Docker resources
+        run: |
+          echo "Cleaning up unused Docker images..."
+          # Remove dangling images
+          docker image prune -f
+          # Remove old test-repo images (keep latest)
+          docker images test-repo --format "{{.ID}} {{.Tag}}" | grep -v latest | awk '{print $1}' | xargs -r docker rmi || true
+          echo "Cleanup completed!"
+        continue-on-error: true
